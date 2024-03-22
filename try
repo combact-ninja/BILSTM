@@ -1,0 +1,156 @@
+import tensorflow as tf
+from sklearn.preprocessing import OneHotEncoder
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Bidirectional, LSTM, Dense, Dropout, LayerNormalization, Concatenate, Layer, Reshape
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import regularizers
+from tensorflow.keras import backend as K
+from sklearn.model_selection import train_test_split
+import numpy as np
+
+# GAT layer
+class GraphAttention(Layer):
+    def __init__(self, units, num_heads, concat_heads=True, dropout=0.5, **kwargs):
+        super(GraphAttention, self).__init__(**kwargs)
+        self.units = units
+        self.num_heads = num_heads
+        self.concat_heads = concat_heads
+        self.dropout = dropout
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight("kernel",
+                                      shape=(input_shape[1][-1], self.units * self.num_heads),
+                                      initializer="glorot_uniform",
+                                      regularizer=regularizers.l2(0.001),
+                                      trainable=True)
+        self.bias = self.add_weight("bias",
+                                    shape=(self.units * self.num_heads,),
+                                    initializer="zeros",
+                                    trainable=True)
+
+    def call(self, inputs):
+        features, adjacency_matrix = inputs
+        head_outputs = []
+        for _ in range(self.num_heads):
+            features_transformed = K.dot(features, self.kernel)
+            attention_scores = K.batch_dot(features_transformed, K.permute_dimensions(features_transformed, (0, 2, 1)))
+            attention_scores_normalized = K.softmax(attention_scores)
+            attention_coefficients = K.dot(attention_scores_normalized, features_transformed)
+            head_output = K.bias_add(attention_coefficients, self.bias)
+            head_outputs.append(head_output)
+
+        if self.concat_heads:
+            output = K.concatenate(head_outputs, axis=-1)
+        else:
+            output = K.mean(K.stack(head_outputs), axis=0)
+
+        output = K.l2_normalize(output, axis=-1)
+        return output
+
+
+# Neighborhood Attention layer
+class NeighborhoodAttention(Layer):
+    def __init__(self, units, **kwargs):
+        super(NeighborhoodAttention, self).__init__(**kwargs)
+        self.units = units
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight("kernel",
+                                      shape=(input_shape[-1], self.units),
+                                      initializer="glorot_uniform",
+                                      trainable=True)
+
+    def call(self, inputs):
+        features, adjacency_matrix = inputs
+        attention_scores = tf.matmul(features, self.kernel)
+        attention_scores_normalized = tf.nn.softmax(attention_scores)
+        neighborhood_representation = tf.matmul(tf.transpose(attention_scores_normalized), features)
+        output = tf.concat([features, neighborhood_representation], axis=-1)
+        return output
+
+
+num_samples = 5000
+feat = np.random.randn(num_samples, 221)
+lab = np.random(0, 1, num_samples)
+
+
+xtrain, xtest, ytrain, ytest = train_test_split(feat, lab, train_size=0.7)
+label_encoder = OneHotEncoder()
+ytrain = label_encoder.fit_transform(np.array(ytrain).reshape(-1, 1)).toarray()
+ytest = label_encoder.fit_transform(np.array(ytest).reshape(-1, 1)).toarray()
+
+xtrain = xtrain.reshape(xtrain.shape[0], xtrain.shape[1], 1)
+xtest = xtest.reshape(xtest.shape[0], xtest.shape[1], 1)
+
+
+# Define the number of nodes in the GAT layer
+num_heads = 8
+hidden_units = 64
+# Define the inputs
+inputs = Input(shape=(xtrain.shape[1], xtrain.shape[2]))
+# BiLSTM layer
+x = Bidirectional(LSTM(10, return_sequences=True))(inputs)
+# GAT layer
+gat_output = GraphAttention(units=hidden_units, num_heads=num_heads)([x, x])
+
+
+# Neighrbourhood Attention
+gat_output_shape = tf.shape(gat_output)
+gat_output_reshaped = Reshape((gat_output_shape[1], gat_output_shape[3]))(gat_output)
+
+neighborhood_attention_output = NeighborhoodAttention(units=hidden_units)([gat_output_reshaped, x])
+
+# Concatenate BiLSTM, GAT, and Neighborhood Attention outputs
+concatenated_output = Concatenate()([x, gat_output_reshaped, neighborhood_attention_output])
+
+# Add a Dense layer for classification
+output = Dense(ytrain.shape[1], activation='softmax')(concatenated_output)
+
+# Create the model
+model = Model(inputs=inputs, outputs=output)
+
+# Compile the model
+model.compile(optimizer=Adam(learning_rate=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Print model summary
+model.summary()
+
+# Fit the model
+model.fit(xtrain, ytrain, epochs=5, batch_size=128, validation_data=(xtest, ytest))
+
+
+
+
+
+
+
+input_shape = tf.shape(gat_output)
+output_tensor = tf.reshape(gat_output, (input_shape[0], input_shape[1], input_shape[3]))
+# Neighrbourhood Attention
+# Neighborhood Attention layer
+# Reshape gat_output to match the shape of x
+
+gat_output_shape = output_tensor.shape
+gat_output_reshaped = Reshape((gat_output_shape[1], gat_output_shape[2]))(output_tensor)
+
+neighborhood_attention_output = NeighborhoodAttention(units=hidden_units)([gat_output_reshaped, x])
+# Reshape gat_output to match the shape of x
+# gat_output_reshaped = Reshape((221, 20))(gat_output)
+
+input_shape = tf.shape(gat_output)
+output_tensor = tf.reshape(gat_output, (input_shape[0], input_shape[1], input_shape[3]))
+# Concatenate BiLSTM and GAT outputs
+concatenated_output = Concatenate()([x, output_tensor])
+
+# Add a Dense layer for classification
+output = Dense(1, activation='sigmoid')(concatenated_output)
+
+# Create the model
+model = Model(inputs=inputs, outputs=output)
+
+# Compile the model
+model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
+
+# Print model summary
+model.summary()
+model.fit(xtrain, ytrain, epochs=5, batch_size=128)
