@@ -440,3 +440,7 @@ model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accur
 
 # Summary of the Model
 model.summary()
+
+
+
+# https://www.sciencedirect.com/science/article/abs/pii/S0020025523013312
