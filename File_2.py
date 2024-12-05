@@ -302,3 +302,141 @@ model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=5, batch_si
 # Evaluate the model
 loss, accuracy = model.evaluate(X_test, y_test)
 print(f"Test Accuracy: {accuracy:.2%}")
+
+
+
+# ------------------------------------------------ Granular computing---------------------------------------------------------
+
+# Simulate numerical granule extraction (using 10 rules)
+def extract_numerical_granules(sequence):
+    """Generates numerical granules from a text sequence using 10 rules."""
+    granules = [
+        np.mean(sequence),  # Average value of the sequence
+        np.max(sequence),   # Maximum value
+        np.min(sequence),   # Minimum value
+        np.std(sequence),   # Standard deviation
+        np.sum(sequence),   # Sum of values
+        np.median(sequence),  # Median value
+        len(sequence),       # Sequence length
+        np.var(sequence),    # Variance
+        sequence[-1] if sequence.size > 0 else 0,  # Last element
+        sequence[0] if sequence.size > 0 else 0   # First element
+    ]
+    return np.array(granules)
+# for granular features
+import numpy as np
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+# Sample text data
+texts = ["This is a sample text.", "Another example for granules."]
+
+# Tokenization
+tokenizer = Tokenizer(num_words=20000)
+tokenizer.fit_on_texts(texts)
+sequences = tokenizer.texts_to_sequences(texts)
+padded_sequences = pad_sequences(sequences, maxlen=300)
+
+# Extract granular features
+granular_features = np.array([extract_numerical_granules(seq) for seq in padded_sequences])
+
+print("Granular Features Shape:", granular_features.shape)
+# ------------- reverse pancake algorithm -------------
+import numpy as np
+
+def reverse_pancake_scramble(sequence):
+    """Applies the Reverse Pancake Scramble algorithm to scramble the input sequence."""
+    scrambled_sequence = np.array(sequence).copy()
+    n = len(scrambled_sequence)
+    
+    for i in range(n, 0, -1):
+        scrambled_sequence[:i] = scrambled_sequence[:i][::-1]
+    
+    return scrambled_sequence
+
+# Example usage
+sequence = [1, 2, 3, 4, 5, 6]
+scrambled_sequence = reverse_pancake_scramble(sequence)
+print("Original Sequence:", sequence)
+print("Scrambled Sequence:", scrambled_sequence.tolist())
+""""
+# The Reverse Pancake Scramble (RPS) algorithm is inspired by the pancake sorting problem,
+where the goal is to sort a sequence by flipping segments. In the RPS context, instead of sorting, 
+the goal is to scramble the sequence in a structured way by reversing and flipping segments repeatedly to 
+create granular variations of the input.
+""""
+# ---------------------------- model----------------------------
+import tensorflow as tf
+import numpy as np
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import (
+    Input, Embedding, Conv1D, MaxPooling1D, Flatten,
+    Bidirectional, LSTM, Dense, Dropout, Concatenate
+)
+
+# Simulate Reverse Pancake Scramble Granular (RPSG) algorithm
+def reverse_pancake_scramble(sequence):
+    """Applies a scrambling operation to generate granular text representation."""
+    return np.flip(sequence)
+
+# Simulate numerical granule extraction (using 10 rules)
+def extract_numerical_granules(sequence):
+    """Generates numerical granules from a text sequence using 10 rules."""
+    granules = [
+        np.mean(sequence),  # Average value of the sequence
+        np.max(sequence),   # Maximum value
+        np.min(sequence),   # Minimum value
+        np.std(sequence),   # Standard deviation
+        np.sum(sequence),   # Sum of values
+        np.median(sequence),  # Median value
+        len(sequence),       # Sequence length
+        np.var(sequence),    # Variance
+        sequence[-1] if sequence.size > 0 else 0,  # Last element
+        sequence[0] if sequence.size > 0 else 0   # First element
+    ]
+    return np.array(granules)
+
+# Assume input shape of original sequence
+input_shape = (300,)  # Example sequence length
+embedding_dim = 300   # Embedding dimension
+
+# Input Layer
+input_text = Input(shape=input_shape, name='text_input')
+
+# Embedding Layer
+embedding_layer = Embedding(input_dim=20000, output_dim=embedding_dim, input_length=input_shape[0])(input_text)
+
+# Apply RPSG algorithm on input_text (simulated)
+rpsg_text = tf.keras.layers.Lambda(lambda x: tf.reverse(x, axis=[-1]))(input_text)
+
+# Extract numerical granules (simulated here as an additional input)
+numerical_granules_input = tf.keras.layers.Lambda(lambda x: tf.numpy_function(extract_numerical_granules, [x], tf.float32))(input_text)
+
+# Convolutional Layers (CNN Block)
+conv1 = Conv1D(filters=128, kernel_size=5, activation='relu', padding='same')(embedding_layer)
+pool1 = MaxPooling1D(pool_size=2)(conv1)
+
+# BiLSTM Layer (sequential modeling)
+bi_lstm = Bidirectional(LSTM(128, return_sequences=False))(embedding_layer)
+
+# Flatten CNN output
+flatten_cnn = Flatten()(pool1)
+
+# Combine the outputs: CNN, BiLSTM, and numerical granules
+concat_layer = Concatenate()([flatten_cnn, bi_lstm, numerical_granules_input])
+
+# Fully Connected Layer
+dense1 = Dense(128, activation='relu')(concat_layer)
+dropout1 = Dropout(0.5)(dense1)
+
+# Output Layer (multi-class classification)
+output = Dense(5, activation='softmax')(dropout1)
+
+# Build the Model
+model = Model(inputs=input_text, outputs=output)
+
+# Compile the Model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Summary of the Model
+model.summary()
