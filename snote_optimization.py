@@ -204,3 +204,68 @@ if __name__ == "__main__":
     y_pred = model.predict(X_test)
     test_f1 = f1_score(y_test, y_pred)
     print("Test F1-Score:", test_f1)
+
+
+
+
+# ------------------------------------------------------------------------------------------------------------------
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv1D, Flatten, Dense, LSTM
+
+# Input shape
+input_shape = (44,)
+
+# CNN model
+def build_cnn(input_shape):
+    inputs = Input(shape=input_shape)
+    x = Conv1D(filters=32, kernel_size=3, activation='relu')(inputs)
+    x = Flatten()(x)
+    x = Dense(64, activation='relu')(x)
+    outputs = Dense(10, activation='softmax')(x)  # Assuming 10 classes
+    return Model(inputs, outputs)
+
+# LSTM model
+def build_lstm(input_shape):
+    inputs = Input(shape=input_shape)
+    x = LSTM(64, return_sequences=False)(inputs)
+    x = Dense(64, activation='relu')(x)
+    outputs = Dense(10, activation='softmax')(x)  # Assuming 10 classes
+    return Model(inputs, outputs)
+
+# Build individual models
+cnn_model = build_cnn(input_shape)
+lstm_model = build_lstm(input_shape)
+
+# Fusion via Fuzzy Min-Max
+inputs = Input(shape=input_shape)
+
+# Get outputs from individual models
+cnn_output = cnn_model(inputs)
+lstm_output = lstm_model(inputs)
+
+# Fuzzy Min-Max
+min_output = tf.keras.layers.minimum([cnn_output, lstm_output])
+max_output = tf.keras.layers.maximum([cnn_output, lstm_output])
+
+# Fused output (combine Min and Max - flexible, here we use the mean)
+fused_output = (min_output + max_output) / 2
+
+# Final model
+fused_model = Model(inputs, fused_output)
+
+# Compile the model
+fused_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Summary
+fused_model.summary()
+
+# Train the model
+# Assuming `X_train` and `y_train` are the training data and labels
+# Assuming `X_test` and `y_test` are the testing data and labels
+fused_model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=10, batch_size=32)
+
+# Evaluate the model
+test_loss, test_acc = fused_model.evaluate(X_test, y_test)
+print(f"Test Accuracy: {test_acc}")
+# ------------------------------------------------------------------------------------------------------
